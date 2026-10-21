@@ -78,7 +78,7 @@ def calculate_peripheral_size(peripheral, default_register_size):
 	for register in peripheral.registers:
 		register_size = default_register_size if not register._size else register._size
 		size = max(size, register.address_offset + register_size/8)
-	return size
+	return int(size)
 
 
 svd_file = askFile("Choose SVD file", "Load SVD File")
@@ -92,7 +92,9 @@ cpu_type = parser.get_device().cpu.name
 # little/big
 cpu_endian = parser.get_device().cpu.endian
 
-default_register_size = parser.get_device().size
+# Get device size, default to 32 if not specified in the SVD
+raw_size = parser.get_device().size
+default_register_size = int(raw_size) if raw_size is not None else 32
 
 # Not all SVDs contain these fields
 if cpu_type and not cpu_type.startswith("CM"):
@@ -122,7 +124,7 @@ print("Generating memory regions...")
 memory_regions = []
 for peripheral in peripherals:
 	start = peripheral.base_address
-	length = peripheral.address_block.offset + peripheral.address_block.size
+	length = calculate_peripheral_size(peripheral, default_register_size)
 	end = peripheral.base_address + length
 
 	memory_regions.append(MemoryRegion(peripheral.name, start, end))
@@ -184,8 +186,8 @@ for peripheral in peripherals:
 		elif rs == 8:
 			r_type = UnsignedLongLongDataType()
 
-		print("\t\t\t{}({}:{})".format(register.name, hex(register.address_offset), hex(register.address_offset + register_size/8)))
-		peripheral_struct.replaceAtOffset(register.address_offset, r_type, register_size/8, register.name, register.description)
+		print("\t\t\t{}({}:{})".format(register.name, hex(register.address_offset), hex(int(register.address_offset) + int(register_size/8))))
+		peripheral_struct.replaceAtOffset(register.address_offset, r_type, int(register_size/8), register.name, register.description)
 
 
 	addr = space.getAddress(peripheral_start)
@@ -198,5 +200,6 @@ for peripheral in peripherals:
 					SourceType.USER_DEFINED)
 	try:
 		listing.createData(addr, peripheral_struct, False)
-	except:
-		print("\t\tFailed to generate peripheral " + peripheral.name)
+	except Exception as e:
+		print("\t\tFailed to generate peripheral {}: {}".format(peripheral.name, e))
+		#print("\t\tFailed to generate peripheral " + peripheral.name)
